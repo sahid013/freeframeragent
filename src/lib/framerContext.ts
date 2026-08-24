@@ -12,6 +12,11 @@ import path from 'node:path';
  * task map points to.
  */
 
+/**
+ * All reads here target the user's home directory, not the deployment bundle —
+ * hence the turbopackIgnore markers below. Without them the bundler assumes the
+ * whole project must be traced into the server output.
+ */
 const SKILL_ROOTS = [
   path.join(os.homedir(), '.claude', 'skills', 'framer', 'projects'),
   path.join(os.homedir(), '.agents', 'skills', 'framer', 'projects'),
@@ -27,7 +32,7 @@ export async function contextDir(projectId: string): Promise<string | null> {
   for (const root of SKILL_ROOTS) {
     const dir = path.join(root, safe);
     try {
-      const stat = await fs.stat(dir);
+      const stat = await fs.stat(/* turbopackIgnore: true */ dir);
       if (stat.isDirectory()) return dir;
     } catch {
       // Try the next root.
@@ -41,7 +46,10 @@ export async function listContextFiles(projectId: string): Promise<string[]> {
   const dir = await contextDir(projectId);
   if (!dir) return [];
 
-  const entries = await fs.readdir(dir, {recursive: true, withFileTypes: true});
+  const entries = await fs.readdir(/* turbopackIgnore: true */ dir, {
+    recursive: true,
+    withFileTypes: true,
+  });
   return entries
     .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
     .map((entry) => path.relative(dir, path.join(entry.parentPath, entry.name)))
@@ -69,7 +77,7 @@ export async function readContextFiles(
     }
 
     try {
-      const content = await fs.readFile(target, 'utf-8');
+      const content = await fs.readFile(/* turbopackIgnore: true */ target, 'utf-8');
       results.push({
         name,
         content:
@@ -87,7 +95,7 @@ export async function readContextFiles(
 
 async function readOptional(dir: string, name: string): Promise<string> {
   try {
-    return await fs.readFile(path.join(dir, name), 'utf-8');
+    return await fs.readFile(/* turbopackIgnore: true */ path.join(dir, name), 'utf-8');
   } catch {
     return '';
   }

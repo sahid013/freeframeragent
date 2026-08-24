@@ -5,6 +5,22 @@ work; the UI is built with [Astryx](https://github.com/facebook/astryx).
 
 ![Console](docs/console.png)
 
+## What deploys and what doesn't
+
+The repo holds two things with opposite hosting needs:
+
+| | Where it runs | Why |
+| --- | --- | --- |
+| **The console** (`/`, `/api/agent`, `/api/projects`, `/api/session`, `/api/tree`, `/api/selection`, `/api/memory`) | Your machine only | Needs the Framer relay on `127.0.0.1:19988`, credentials in `~/.config/framer`, and a writable `.data/`. |
+| **The chat widget** (`/embed`, `/api/chat`) | Deploys fine | Plain HTTP to OpenRouter, no local state. |
+
+Deploying is still useful — it gets you the widget. Visiting `/` on a deployment shows a short
+explainer instead of a console, because every console route answers non-local requests with `403`.
+That guard is deliberate: a public URL able to execute code against your Framer projects would be a
+serious hole, not a feature.
+
+If you deploy, set `OPENROUTER_API_KEY` in your Vercel project settings or `/api/chat` returns 500.
+
 ## Runs locally, not on Vercel
 
 This app shells out to the `@framer/agent` CLI, which runs a relay server on `127.0.0.1:19988`
