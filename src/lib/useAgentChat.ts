@@ -18,14 +18,21 @@ type Options = {
 let counter = 0;
 const nextId = () => `m${++counter}-${Date.now().toString(36)}`;
 
+type Delta = {kind: 'content' | 'reasoning'; text: string};
+
 /**
- * Reads an OpenAI-style SSE stream, yielding content deltas.
+ * Reads an OpenAI-style SSE stream, yielding content and reasoning deltas.
  *
  * OpenRouter interleaves `: OPENROUTER PROCESSING` keep-alive comments with the
  * data frames, and a chunk can split mid-line, so we buffer and only act on
  * complete `data:` lines.
+ *
+ * Reasoning models (Ox Alpha among them) stream a long run of `delta.reasoning`
+ * with empty `content` before answering — 35 frames before the first word, in
+ * one measured case. Surfacing that as a distinct kind is what stops the widget
+ * showing a visitor nothing at all while the model thinks.
  */
-async function* readDeltas(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
+async function* readDeltas(body: ReadableStream<Uint8Array>): AsyncGenerator<Delta> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -47,8 +54,12 @@ async function* readDeltas(body: ReadableStream<Uint8Array>): AsyncGenerator<str
         if (payload === '[DONE]') return;
 
         try {
-          const delta = JSON.parse(payload)?.choices?.[0]?.delta?.content;
-          if (typeof delta === 'string' && delta) yield delta;
+          const delta = JSON.parse(payload)?.choices?.[0]?.delta;
+          if (typeof delta?.content === 'string' && delta.content) {
+            yield {kind: 'content', text: delta.content};
+          } else if (typeof delta?.reasoning === 'string' && delta.reasoning) {
+            yield {kind: 'reasoning', text: delta.reasoning};
+          }
         } catch {
           // Partial or non-JSON frame — skip it.
         }
@@ -62,6 +73,8 @@ async function* readDeltas(body: ReadableStream<Uint8Array>): AsyncGenerator<str
 export function useAgentChat({endpoint, agent, model}: Options) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  /** Reasoning has started but no answer text has arrived yet. */
+  const [isThinking, setIsThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -81,6 +94,7 @@ export function useAgentChat({endpoint, agent, model}: Options) {
     abortRef.current?.abort();
     abortRef.current = null;
     setIsStreaming(false);
+    setIsThinking(false);
   }, []);
 
   const send = useCallback(
@@ -118,8 +132,14 @@ export function useAgentChat({endpoint, agent, model}: Options) {
         }
 
         for await (const delta of readDeltas(response.body)) {
+          if (delta.kind === 'reasoning') {
+            setIsThinking(true);
+            continue;
+          }
+
+          setIsThinking(false);
           update((prev) =>
-            prev.map((m) => (m.id === replyId ? {...m, content: m.content + delta} : m)),
+            prev.map((m) => (m.id === replyId ? {...m, content: m.content + delta.text} : m)),
           );
         }
       } catch (caught) {
@@ -144,5 +164,5 @@ export function useAgentChat({endpoint, agent, model}: Options) {
     setError(null);
   }, [stop, update]);
 
-  return {messages, isStreaming, error, send, stop, reset};
+  return {messages, isStreaming, isThinking, error, send, stop, reset};
 }

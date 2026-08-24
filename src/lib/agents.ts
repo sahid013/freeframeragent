@@ -67,6 +67,7 @@ export const DEFAULT_AGENT: AgentId = 'assistant';
  * a public embed can't be pointed at an expensive model by editing a URL.
  */
 export const ALLOWED_MODELS = [
+  'stealth/ox-alpha',
   'openai/gpt-4o',
   'openai/gpt-4o-mini',
   'anthropic/claude-sonnet-4.5',
@@ -75,7 +76,15 @@ export const ALLOWED_MODELS = [
   'meta-llama/llama-3.3-70b-instruct',
 ] as const;
 
-export const DEFAULT_MODEL: (typeof ALLOWED_MODELS)[number] = 'openai/gpt-4o';
+/**
+ * Zero-cost, so the widget runs without credits.
+ *
+ * Worth knowing for a public embed: Ox Alpha is free because stealth traffic
+ * becomes training/eval signal for an undisclosed lab — and on this endpoint
+ * that traffic is your *visitors'* messages, not yours. Switch to
+ * 'openai/gpt-4o-mini' if the widget will handle anything personal.
+ */
+export const DEFAULT_MODEL: (typeof ALLOWED_MODELS)[number] = 'stealth/ox-alpha';
 
 export function resolveAgent(id: string | null | undefined): Agent & {id: AgentId} {
   const key = (id && id in AGENTS ? id : DEFAULT_AGENT) as AgentId;

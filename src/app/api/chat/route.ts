@@ -1,4 +1,5 @@
 import {resolveAgent, resolveModel} from '@/lib/agents';
+import {fetchOpenRouter} from '@/lib/openrouter';
 
 /**
  * OpenRouter proxy.
@@ -20,7 +21,13 @@ const MAX_CHARS_PER_MESSAGE = 8_000;
  * full max_tokens against your balance up front — leaving it unset makes a
  * model like gpt-4o reserve 16k and fail with a 402 on a small balance.
  */
-const MAX_TOKENS = Number(process.env.MAX_TOKENS ?? 1024);
+/**
+ * Reasoning models spend part of this budget thinking before they write a word,
+ * and that spend counts here — at max_tokens=20 Ox Alpha returned
+ * finish_reason "length" with null content, having reasoned the whole budget
+ * away. Keep the ceiling comfortably above the answer you actually want.
+ */
+const MAX_TOKENS = Number(process.env.MAX_TOKENS ?? 2048);
 /** 0 (or a non-number) drops the cap — safe on zero-cost models. */
 const MAX_TOKENS_FIELD =
   Number.isFinite(MAX_TOKENS) && MAX_TOKENS > 0 ? {max_tokens: MAX_TOKENS} : {};
@@ -144,23 +151,26 @@ export async function POST(request: Request) {
 
   let upstream: Response;
   try {
-    upstream = await fetch(OPENROUTER_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'HTTP-Referer': site,
-        'X-Title': process.env.SITE_NAME ?? 'Framer Agent',
-        'Content-Type': 'application/json',
+    upstream = await fetchOpenRouter(
+      OPENROUTER_URL,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'HTTP-Referer': site,
+          'X-Title': process.env.SITE_NAME ?? 'Framer Agent',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          stream: true,
+          ...MAX_TOKENS_FIELD,
+          temperature: 0.6,
+          messages: [{role: 'system', content: agent.system}, ...trimmed],
+        }),
       },
-      body: JSON.stringify({
-        model,
-        stream: true,
-        ...MAX_TOKENS_FIELD,
-        temperature: 0.6,
-        messages: [{role: 'system', content: agent.system}, ...trimmed],
-      }),
-      signal: request.signal,
-    });
+      {signal: request.signal},
+    );
   } catch (error) {
     if (request.signal.aborted) return new Response(null, {status: 499, headers: cors});
     return json({error: `Could not reach OpenRouter: ${String(error)}`}, 502, cors);
@@ -168,8 +178,14 @@ export async function POST(request: Request) {
 
   if (!upstream.ok || !upstream.body) {
     const detail = await upstream.text().catch(() => '');
+    const busy = upstream.status === 429;
     return json(
-      {error: `OpenRouter returned ${upstream.status}.`, detail: detail.slice(0, 500)},
+      {
+        error: busy
+          ? 'The model is busy right now — it runs on a shared free pool. Try again in a moment.'
+          : `OpenRouter returned ${upstream.status}.`,
+        detail: detail.slice(0, 500),
+      },
       upstream.status,
       cors,
     );

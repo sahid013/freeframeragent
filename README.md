@@ -149,6 +149,24 @@ Empty in production means same-origin only. Empty in development stays open, so 
 Framer canvas works without extra config. The console's own routes ignore it entirely — they're
 localhost-only, which is a stricter rule.
 
+## Ox Alpha is a reasoning model — three things that follow
+
+The default everywhere is now `stealth/ox-alpha` ($0, 1M context, tool support). It reasons before
+answering, which has practical consequences:
+
+1. **It streams `delta.reasoning` with empty `content` first.** One measured reply sent 35 reasoning
+   frames before its first word. A parser that only reads `delta.content` shows the user nothing for
+   that entire stretch — the widget renders a "Thinking…" row instead.
+2. **Reasoning tokens come out of `max_tokens`.** At `max_tokens=20` it returned `finish_reason:
+   "length"` and `content: null`, having spent the whole budget thinking. Leave real headroom; the
+   widget defaults to `2048`, the agent loop to `8192`.
+3. **Free models are rate limited.** Rapid successive calls return `429`. Fine for one person
+   editing; something to watch if the widget is on a busy public page.
+
+And the standing caveat: it is free because stealth traffic becomes training/eval signal for an
+undisclosed lab. On the console that is your prompts. On the widget it is your **visitors'**
+messages — switch `DEFAULT_MODEL` in `src/lib/agents.ts` to `openai/gpt-4o-mini` if that matters.
+
 ## Model choice
 
 Editing is a tool-calling loop, so model quality matters more than it does for plain chat. Weaker

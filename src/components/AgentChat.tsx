@@ -14,6 +14,8 @@ import {EmptyState} from '@astryxdesign/core/EmptyState';
 import {Button} from '@astryxdesign/core/Button';
 import {Avatar} from '@astryxdesign/core/Avatar';
 import {Text} from '@astryxdesign/core/Text';
+import {Spinner} from '@astryxdesign/core/Spinner';
+import {HStack} from '@astryxdesign/core/Stack';
 import {useAgentChat} from '@/lib/useAgentChat';
 import type {Agent} from '@/lib/agents';
 
@@ -108,9 +110,16 @@ export function AgentChat({
                     ) : undefined
                   }>
                   {isAssistant ? (
-                    <Markdown isStreaming={isLast && isStreaming} density="compact">
-                      {message.content}
-                    </Markdown>
+                    message.content ? (
+                      <Markdown isStreaming={isLast && isStreaming} density="compact">
+                        {message.content}
+                      </Markdown>
+                    ) : (
+                      <HStack gap={1.5} vAlign="center">
+                        <Spinner size="sm" />
+                        <Text type="supporting">Thinking…</Text>
+                      </HStack>
+                    )
                   ) : (
                     message.content
                   )}

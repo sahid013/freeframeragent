@@ -1,6 +1,7 @@
 import {execCode, lookupDocs} from '@/lib/framer';
 import {coreContext, listContextFiles, readContextFiles} from '@/lib/framerContext';
 import {forget, readMemory, remember, renderMemory} from '@/lib/projectMemory';
+import {fetchOpenRouter} from '@/lib/openrouter';
 
 /**
  * The agent loop: your OpenRouter model, with tools that reach into a live
@@ -311,33 +312,49 @@ export async function* runAgent(opts: {
 
   for (let step = 0; step < MAX_STEPS; step++) {
     let response: Response;
+    const retries: string[] = [];
     try {
-      response = await fetch(OPENROUTER_URL, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'HTTP-Referer': siteUrl,
-          'X-Title': 'Framer Agent Console',
-          'Content-Type': 'application/json',
+      response = await fetchOpenRouter(
+        OPENROUTER_URL,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'HTTP-Referer': siteUrl,
+            'X-Title': 'Framer Agent Console',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+            tools: TOOLS,
+            tool_choice: 'auto',
+            ...maxTokens(),
+          }),
         },
-        body: JSON.stringify({
-          model,
-          messages,
-          tools: TOOLS,
-          tool_choice: 'auto',
-          ...maxTokens(),
-        }),
-        signal,
-      });
+        {
+          signal,
+          onRetry: ({attempt, waitMs}) =>
+            retries.push(`Model busy — retrying in ${waitMs / 1000}s (attempt ${attempt}).`),
+        },
+      );
     } catch (error) {
       if (signal.aborted) return;
       yield {type: 'error', text: `Could not reach OpenRouter: ${String(error)}`};
       return;
     }
 
+    for (const notice of retries) yield {type: 'status', text: notice};
+
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
-      yield {type: 'error', text: `OpenRouter returned ${response.status}. ${detail.slice(0, 400)}`};
+      yield {
+        type: 'error',
+        text:
+          response.status === 429
+            ? 'The model is busy — it runs on a capacity pool shared by everyone using it. Retried three times without luck; try again shortly or switch model in the sidebar.'
+            : `OpenRouter returned ${response.status}. ${detail.slice(0, 400)}`,
+      };
       return;
     }
 

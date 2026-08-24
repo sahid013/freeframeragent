@@ -160,6 +160,7 @@ addPropertyControls(ChatAgent, {
         title: "Model",
         options: [
             "",
+            "stealth/ox-alpha",
             "openai/gpt-4o",
             "openai/gpt-4o-mini",
             "anthropic/claude-sonnet-4.5",
@@ -169,6 +170,7 @@ addPropertyControls(ChatAgent, {
         ],
         optionTitles: [
             "Default",
+            "Ox Alpha (free)",
             "GPT-4o",
             "GPT-4o mini",
             "Claude Sonnet 4.5",
